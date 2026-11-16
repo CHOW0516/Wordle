@@ -23,7 +23,8 @@ for (const id of [
   'join-screen', 'lobby-screen', 'game-screen', 'name-input', 'code-input', 'create-button',
   'join-button', 'room-code', 'lobby-title', 'lobby-players', 'start-button', 'waiting-text',
   'game-room-code', 'timer', 'effect-banner', 'board', 'sabotage-panel', 'sabotage-name',
-  'target-buttons', 'keyboard', 'scoreboard', 'toast', 'event-log',
+  'target-buttons', 'keyboard', 'scoreboard', 'toast', 'event-log', 'length-buttons', 'hint-tiles',
+  'hint-button',
 ]) {
   elements[id] = document.getElementById(id);
 }
@@ -157,6 +158,7 @@ elements['join-button'].addEventListener('click', () => {
   joinRoom(code);
 });
 elements['start-button'].addEventListener('click', () => sendMessage({ type: 'start' }));
+elements['hint-button'].addEventListener('click', () => sendMessage({ type: 'hint' }));
 
 // ---------- Rendering ----------
 
@@ -190,6 +192,17 @@ function renderLobby() {
     })
   );
 
+  elements['length-buttons'].replaceChildren(
+    ...roomState.matchLengthChoices.map((minutes) => {
+      const button = document.createElement('button');
+      button.textContent = `${minutes} min`;
+      button.disabled = !isHost;
+      if (minutes === roomState.matchMinutes) button.classList.add('selected');
+      button.addEventListener('click', () => sendMessage({ type: 'matchLength', minutes }));
+      return button;
+    })
+  );
+
   elements['start-button'].hidden = !isHost;
   elements['start-button'].textContent = finished ? 'Play again' : 'Start match';
   elements['start-button'].disabled = players.length < 2;
@@ -202,6 +215,7 @@ function renderGame() {
   elements['game-room-code'].textContent = roomState.code;
   document.body.classList.toggle('frozen', isActive(activeEffects.freezeUntil));
   renderEffectBanner();
+  renderHints();
   renderBoard();
   renderKeyboard();
   renderSabotagePanel();
@@ -217,6 +231,24 @@ function renderEffectBanner() {
   if (isActive(activeEffects.scrambleUntil)) messages.push(SABOTAGE_MESSAGES.scramble);
   elements['effect-banner'].hidden = messages.length === 0;
   elements['effect-banner'].textContent = messages.join(' ');
+}
+
+function renderHints() {
+  const { hints, hintsLeft } = roomState.you;
+  const tiles = [];
+  for (let position = 0; position < WORD_LENGTH; position++) {
+    const tile = document.createElement('div');
+    tile.className = 'hint-tile';
+    const hint = hints.find((entry) => entry.position === position);
+    if (hint) {
+      tile.textContent = hint.letter;
+      tile.classList.add('revealed');
+    }
+    tiles.push(tile);
+  }
+  elements['hint-tiles'].replaceChildren(...tiles);
+  elements['hint-button'].textContent = `Hint (${hintsLeft} left, -1 pt)`;
+  elements['hint-button'].disabled = hintsLeft === 0;
 }
 
 function renderBoard() {

@@ -116,6 +116,8 @@ webSocketServer.on('connection', (socket) => {
     if (!room) return replyError('Join a room first.');
     if (message.type === 'start') replyError(room.start(playerId));
     else if (message.type === 'guess') replyError(room.guess(playerId, message.word));
+    else if (message.type === 'hint') replyError(room.hint(playerId));
+    else if (message.type === 'matchLength') replyError(room.setMatchLength(playerId, message.minutes));
     else if (message.type === 'sabotage') replyError(room.sabotage(playerId, message.targetId));
   });
 

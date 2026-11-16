@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { Room, scoreGuess, pointsForSolve, pickSabotage, MATCH_LENGTH_MS } = require('../game');
+const { Room, scoreGuess, pointsForSolve, pickSabotage, HINTS_PER_MATCH } = require('../game');
 
 test('scoreGuess marks correct, present and absent letters', () => {
   assert.deepStrictEqual(scoreGuess('smile', 'solve'), ['correct', 'absent', 'absent', 'present', 'correct']);
@@ -156,7 +156,6 @@ test('the match ends when the timer fires, and can be restarted', () => {
   assert.strictEqual(room.guess('ann', 'solve'), 'The match is not running.');
   assert.strictEqual(room.start('ann'), null);
   assert.strictEqual(room.players.get('ann').score, 0);
-  assert.strictEqual(MATCH_LENGTH_MS, 300000);
 });
 
 test('when a player leaves mid-match, host moves on and match ends below 2 players', () => {
@@ -172,4 +171,55 @@ test('state messages never include other players\' secret words', () => {
   for (const entry of stateMessages) {
     assert.ok(!JSON.stringify(entry.message).includes('"solve"'));
   }
+});
+
+test('host picks the match length before the match, and the timer uses it', () => {
+  const { room, clock } = makeRoom();
+  room.addPlayer('ann', 'Ann');
+  room.addPlayer('bob', 'Bob');
+  assert.strictEqual(room.matchMinutes, 5);
+  assert.strictEqual(room.setMatchLength('bob', 3), 'Only the host can change the match length.');
+  assert.strictEqual(room.setMatchLength('ann', 7), 'Pick 3, 5 or 10 minutes.');
+  assert.strictEqual(room.setMatchLength('ann', 10), null);
+  room.start('ann');
+  assert.strictEqual(room.endsAt, clock.time + 10 * 60 * 1000);
+  assert.strictEqual(room.setMatchLength('ann', 3), 'You cannot change the length during a match.');
+});
+
+test('hints reveal unknown letters, cost a point, and run out after 3 per match', () => {
+  const { room } = startTwoPlayerRoom();
+  const ann = room.players.get('ann');
+  room.guess('ann', 'smile'); // S and E are green for SOLVE
+  for (let count = 0; count < HINTS_PER_MATCH; count++) {
+    assert.strictEqual(room.hint('ann'), null);
+  }
+  assert.strictEqual(room.hint('ann'), 'You have no hints left.');
+  assert.strictEqual(ann.score, -3);
+  // Hints never repeat a spot and never pick a spot already green (0 and 4).
+  assert.deepStrictEqual([...ann.hintPositions].sort(), [1, 2, 3]);
+  // Hints carry across words, but revealed letters reset on a new word.
+  room.guess('ann', 'solve');
+  assert.strictEqual(ann.hintPositions.length, 0);
+  assert.strictEqual(ann.hintsLeft, 0);
+});
+
+test('hint state message shows the letter, and hints reset on a new match', () => {
+  const { room, sent, timers } = startTwoPlayerRoom();
+  room.hint('ann');
+  const lastState = sent.filter((entry) => entry.playerId === 'ann' && entry.message.type === 'state').pop();
+  const [shownHint] = lastState.message.you.hints;
+  assert.strictEqual(shownHint.letter, 'solve'[shownHint.position]);
+  timers[0]();
+  room.start('ann');
+  assert.strictEqual(room.players.get('ann').hintsLeft, HINTS_PER_MATCH);
+});
+
+test('hints are blocked while frozen and when every letter is known', () => {
+  const { room } = startTwoPlayerRoom();
+  room.players.get('ann').pendingSabotages.push('freeze');
+  room.sabotage('ann', 'bob');
+  assert.strictEqual(room.hint('bob'), 'You are frozen!');
+  const ann = room.players.get('ann');
+  ann.guesses.push({ word: 'solve', result: Array(5).fill('correct') });
+  assert.strictEqual(room.hint('ann'), 'You already know every letter.');
 });

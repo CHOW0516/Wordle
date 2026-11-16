@@ -94,6 +94,30 @@ button:disabled { opacity: 0.5; cursor: default; }
 .tile.fogged { background: #5d636b; border-color: #5d636b; filter: blur(1px); }
 .row.lost .tile { background: repeating-linear-gradient(45deg, #2a1d1d, #2a1d1d 6px, #3a2424 6px, #3a2424 12px); border-color: var(--danger); }
 
+/* Match length */
+.length-buttons { display: flex; gap: 6px; }
+.length-buttons button { margin: 0; background: var(--surface); border: 2px solid var(--border); }
+.length-buttons button.selected { background: var(--accent); border-color: var(--accent); }
+.length-buttons button:disabled { opacity: 1; }
+.length-buttons button:disabled:not(.selected) { opacity: 0.5; }
+
+/* Hints */
+.hint-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.hint-tiles { display: flex; gap: 4px; }
+.hint-tile {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+}
+.hint-tile.revealed { background: var(--correct); border: 2px solid var(--correct); }
+.hint-button { width: auto; margin: 0; padding: 8px 12px; font-size: 0.85rem; background: var(--present); }
+
 /* Keyboard */
 .keyboard { display: grid; gap: 6px; margin-top: 12px; }
 .key-row { display: flex; gap: 4px; justify-content: center; }

@@ -26,6 +26,8 @@
       <p class="hint">Share this code with 1 to 3 friends.</p>
       <h2 id="lobby-title">Players</h2>
       <ol id="lobby-players"></ol>
+      <h2>Match length</h2>
+      <div id="length-buttons" class="length-buttons"></div>
       <button id="start-button" hidden>Start match</button>
       <p id="waiting-text" class="hint"></p>
       <details class="rules">
@@ -35,7 +37,8 @@
           <li>Solve a word to score points (6 for 1 guess, down to 1 for 6 guesses). Then you get a new word right away.</li>
           <li>Each solve earns a sabotage. Click a player to send it. Solving in 3 guesses or fewer earns a stronger one.</li>
           <li>Fog hides colors, Key lock blocks 3 letters, Scramble shuffles the keyboard, Freeze stops typing, Lost row takes away a guess.</li>
-          <li>The match lasts 5 minutes. Most points wins.</li>
+          <li>You have 3 hints per match. Each hint shows one letter in its right spot and costs 1 point.</li>
+          <li>The host picks a match length of 3, 5 or 10 minutes. Most points wins.</li>
         </ul>
       </details>
     </section>
@@ -47,6 +50,10 @@
         <span id="timer" class="timer">5:00</span>
       </div>
       <div id="effect-banner" class="effect-banner" hidden></div>
+      <div class="hint-bar">
+        <div id="hint-tiles" class="hint-tiles"></div>
+        <button id="hint-button" class="hint-button">Hint</button>
+      </div>
       <div id="board" class="board"></div>
       <div id="sabotage-panel" class="sabotage-panel" hidden>
         <p>Send <strong id="sabotage-name"></strong> to:</p>

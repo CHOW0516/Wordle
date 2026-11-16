@@ -21,7 +21,8 @@ Set `PORT` to use another port. Run tests with `npm test`.
 - Solving scores `7 - guesses` points (6 for 1 guess, 1 for 6 guesses). You get a new word right away.
 - Running out of guesses shows you the word and gives you a new one, with no points.
 - Each solve earns one sabotage. You pick which player gets it. Solving in 3 guesses or fewer earns a strong one.
-- A match lasts 5 minutes. Most points wins. The host can press **Play again**.
+- Each player has 3 hints per match. A hint shows one unknown letter of the current word in its right spot and costs 1 point.
+- The host picks a match length of 3, 5 (default) or 10 minutes. Most points wins. The host can press **Play again**.
 
 | Sabotage | Strength | Effect on the target |
 |---|---|---|

@@ -3,7 +3,10 @@
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 const MAX_GUESSES = 6;
-const MATCH_LENGTH_MS = 5 * 60 * 1000;
+const MATCH_LENGTH_CHOICES_MINUTES = [3, 5, 10];
+const DEFAULT_MATCH_MINUTES = 5;
+const HINTS_PER_MATCH = 3;
+const HINT_COST_POINTS = 1;
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
@@ -93,6 +96,7 @@ class Room {
     this.state = 'lobby'; // 'lobby' | 'playing' | 'finished'
     this.endsAt = null;
     this.matchTimer = null;
+    this.matchMinutes = DEFAULT_MATCH_MINUTES;
   }
 
   addPlayer(playerId, rawName) {
@@ -114,6 +118,8 @@ class Room {
       usedWords: new Set(),
       guesses: [],
       maxGuesses: MAX_GUESSES,
+      hintsLeft: HINTS_PER_MATCH,
+      hintPositions: [],
       pendingSabotages: [],
       frozenUntil: 0,
       lockedLetters: [],
@@ -153,6 +159,7 @@ class Room {
     for (const player of this.players.values()) {
       player.score = 0;
       player.solvedCount = 0;
+      player.hintsLeft = HINTS_PER_MATCH;
       player.usedWords = new Set();
       player.pendingSabotages = [];
       player.frozenUntil = 0;
@@ -161,9 +168,19 @@ class Room {
       this.giveNewWord(player);
     }
     this.state = 'playing';
-    this.endsAt = this.now() + MATCH_LENGTH_MS;
-    this.matchTimer = this.setTimer(() => this.finish('Time is up!'), MATCH_LENGTH_MS);
+    const matchLengthMs = this.matchMinutes * 60 * 1000;
+    this.endsAt = this.now() + matchLengthMs;
+    this.matchTimer = this.setTimer(() => this.finish('Time is up!'), matchLengthMs);
     this.broadcastEvent('The match has started. Go!');
+    this.broadcastState();
+    return null;
+  }
+
+  setMatchLength(playerId, minutes) {
+    if (playerId !== this.hostId) return 'Only the host can change the match length.';
+    if (this.state === 'playing') return 'You cannot change the length during a match.';
+    if (!MATCH_LENGTH_CHOICES_MINUTES.includes(minutes)) return 'Pick 3, 5 or 10 minutes.';
+    this.matchMinutes = minutes;
     this.broadcastState();
     return null;
   }
@@ -194,6 +211,7 @@ class Room {
     player.usedWords.add(player.secretWord);
     player.guesses = [];
     player.maxGuesses = MAX_GUESSES;
+    player.hintPositions = [];
   }
 
   guess(playerId, rawWord) {
@@ -228,6 +246,29 @@ class Room {
       this.giveNewWord(player);
     }
 
+    this.broadcastState();
+    return null;
+  }
+
+  // Reveals one letter of the current word in its spot. Costs a point.
+  hint(playerId) {
+    const player = this.players.get(playerId);
+    if (!player) return 'You are not in this room.';
+    if (this.state !== 'playing') return 'The match is not running.';
+    if (player.hintsLeft === 0) return 'You have no hints left.';
+    if (this.now() < player.frozenUntil) return 'You are frozen!';
+
+    // Skip spots the player already has green, or already got as a hint.
+    const unknownPositions = [0, 1, 2, 3, 4].filter(
+      (position) =>
+        !player.hintPositions.includes(position) &&
+        !player.guesses.some((guess) => guess.result[position] === 'correct')
+    );
+    if (unknownPositions.length === 0) return 'You already know every letter.';
+
+    player.hintPositions.push(pickRandom(unknownPositions, this.random));
+    player.hintsLeft--;
+    player.score -= HINT_COST_POINTS;
     this.broadcastState();
     return null;
   }
@@ -287,6 +328,8 @@ class Room {
         code: this.code,
         state: this.state,
         hostId: this.hostId,
+        matchMinutes: this.matchMinutes,
+        matchLengthChoices: MATCH_LENGTH_CHOICES_MINUTES,
         endsAt: this.endsAt,
         serverNow: this.now(),
         players: scoreboard,
@@ -294,6 +337,10 @@ class Room {
           id: player.id,
           guesses: this.state === 'playing' ? player.guesses : [],
           maxGuesses: player.maxGuesses,
+          hintsLeft: player.hintsLeft,
+          hints: this.state === 'playing'
+            ? player.hintPositions.map((position) => ({ position, letter: player.secretWord[position] }))
+            : [],
           pendingSabotages: player.pendingSabotages,
         },
       });
@@ -308,6 +355,6 @@ module.exports = {
   pickSabotage,
   MAX_PLAYERS,
   MAX_GUESSES,
-  MATCH_LENGTH_MS,
+  HINTS_PER_MATCH,
   SABOTAGE_DURATION_MS,
 };
