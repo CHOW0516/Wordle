@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Word Rush</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Word Rush</h1>
+
+    <!-- Screen 1: pick a name, create or join a room -->
+    <section id="join-screen">
+      <p class="tagline">Race your friends to solve 5-letter words. Every solve lets you sabotage someone.</p>
+      <label>Your name <input id="name-input" maxlength="12" autocomplete="off"></label>
+      <button id="create-button">Create a room</button>
+      <div class="or">or</div>
+      <label>Room code <input id="code-input" maxlength="4" autocomplete="off"></label>
+      <button id="join-button">Join room</button>
+    </section>
+
+    <!-- Screen 2: waiting room and results -->
+    <section id="lobby-screen" hidden>
+      <p>Room code: <strong id="room-code" class="room-code"></strong></p>
+      <p class="hint">Share this code with 1 to 3 friends.</p>
+      <h2 id="lobby-title">Players</h2>
+      <ol id="lobby-players"></ol>
+      <button id="start-button" hidden>Start match</button>
+      <p id="waiting-text" class="hint"></p>
+      <details class="rules">
+        <summary>How to play</summary>
+        <ul>
+          <li>Everyone gets their own secret word and 6 guesses. Green means right letter, right spot. Yellow means the letter is in the word, but in another spot.</li>
+          <li>Solve a word to score points (6 for 1 guess, down to 1 for 6 guesses). Then you get a new word right away.</li>
+          <li>Each solve earns a sabotage. Click a player to send it. Solving in 3 guesses or fewer earns a stronger one.</li>
+          <li>Fog hides colors, Key lock blocks 3 letters, Scramble shuffles the keyboard, Freeze stops typing, Lost row takes away a guess.</li>
+          <li>The match lasts 5 minutes. Most points wins.</li>
+        </ul>
+      </details>
+    </section>
+
+    <!-- Screen 3: the match -->
+    <section id="game-screen" hidden>
+      <div class="top-bar">
+        <span>Room <strong id="game-room-code"></strong></span>
+        <span id="timer" class="timer">5:00</span>
+      </div>
+      <div id="effect-banner" class="effect-banner" hidden></div>
+      <div id="board" class="board"></div>
+      <div id="sabotage-panel" class="sabotage-panel" hidden>
+        <p>Send <strong id="sabotage-name"></strong> to:</p>
+        <div id="target-buttons" class="target-buttons"></div>
+      </div>
+      <div id="keyboard" class="keyboard"></div>
+      <h2>Scores</h2>
+      <ul id="scoreboard" class="scoreboard"></ul>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
+    <ul id="event-log" class="event-log"></ul>
+  </main>
+  <script src="client.js"></script>
+</body>
+</html>
