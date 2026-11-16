@@ -1,0 +1,17 @@
+{
+  "name": "word-rush",
+  "version": "1.0.0",
+  "description": "Online multiplayer 5-letter word race where solving a word sabotages an opponent.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  }
+}
