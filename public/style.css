@@ -60,6 +60,7 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: default; }
 
+.invite-link { color: var(--text); word-break: break-all; }
 .or { text-align: center; color: var(--muted); margin: 16px 0 0; }
 .room-code { font-size: 1.6rem; letter-spacing: 4px; }
 .rules { margin-top: 20px; color: var(--muted); }

@@ -24,7 +24,7 @@ for (const id of [
   'join-button', 'room-code', 'lobby-title', 'lobby-players', 'start-button', 'waiting-text',
   'game-room-code', 'timer', 'effect-banner', 'board', 'sabotage-panel', 'sabotage-name',
   'target-buttons', 'keyboard', 'scoreboard', 'toast', 'event-log', 'length-buttons', 'hint-tiles',
-  'hint-button',
+  'hint-button', 'invite-button', 'invite-link', 'or-text',
 ]) {
   elements[id] = document.getElementById(id);
 }
@@ -158,6 +158,34 @@ elements['join-button'].addEventListener('click', () => {
   joinRoom(code);
 });
 elements['start-button'].addEventListener('click', () => sendMessage({ type: 'start' }));
+elements['invite-button'].addEventListener('click', copyInviteLink);
+
+function inviteLink() {
+  return `${location.origin}/?room=${roomState.code}`;
+}
+
+async function copyInviteLink() {
+  try {
+    await navigator.clipboard.writeText(inviteLink());
+    showToast('Invite link copied! Paste it to your friends.');
+  } catch {
+    // Clipboard is blocked on plain http pages (e.g. LAN play), so the link is also shown as text.
+    showToast('Could not copy. Copy the link shown below instead.');
+  }
+}
+
+// Opened from an invite link: fill in the code so the friend only types a name.
+const invitedRoomCode = new URLSearchParams(location.search).get('room');
+if (invitedRoomCode) {
+  elements['code-input'].value = invitedRoomCode.toUpperCase().slice(0, 4);
+  elements['create-button'].hidden = true;
+  elements['or-text'].hidden = true;
+  elements['join-button'].textContent = `Join room ${elements['code-input'].value}`;
+  elements['name-input'].focus();
+}
+elements['name-input'].addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && invitedRoomCode) elements['join-button'].click();
+});
 elements['hint-button'].addEventListener('click', () => sendMessage({ type: 'hint' }));
 
 // ---------- Rendering ----------
@@ -176,6 +204,7 @@ function renderLobby() {
   const isHost = roomState.hostId === roomState.you.id;
   const finished = roomState.state === 'finished';
   elements['room-code'].textContent = roomState.code;
+  elements['invite-link'].textContent = inviteLink();
   elements['lobby-title'].textContent = finished ? 'Final scores' : 'Players';
 
   const players = [...roomState.players];
