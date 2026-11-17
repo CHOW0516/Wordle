@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-Open http://localhost:3000. One player clicks **Create a room** and shares the 4‑letter code. Others enter the code and click **Join room**. Players on other devices on the same Wi‑Fi can use `http://<your-computer-ip>:3000`.
+Open http://localhost:3000. One player clicks **Create a room**, then **Copy invite link**, and sends it to friends. Friends open the link, type a name and join. (They can also type the 4‑letter code by hand.) Players on other devices on the same Wi‑Fi can use `http://<your-computer-ip>:3000`.
 
 Set `PORT` to use another port. Run tests with `npm test`.
 

@@ -15,7 +15,7 @@
       <p class="tagline">Race your friends to solve 5-letter words. Every solve lets you sabotage someone.</p>
       <label>Your name <input id="name-input" maxlength="12" autocomplete="off"></label>
       <button id="create-button">Create a room</button>
-      <div class="or">or</div>
+      <div id="or-text" class="or">or</div>
       <label>Room code <input id="code-input" maxlength="4" autocomplete="off"></label>
       <button id="join-button">Join room</button>
     </section>
@@ -23,7 +23,8 @@
     <!-- Screen 2: waiting room and results -->
     <section id="lobby-screen" hidden>
       <p>Room code: <strong id="room-code" class="room-code"></strong></p>
-      <p class="hint">Share this code with 1 to 3 friends.</p>
+      <button id="invite-button">Copy invite link</button>
+      <p class="hint">Send this link to 1 to 3 friends: <span id="invite-link" class="invite-link"></span></p>
       <h2 id="lobby-title">Players</h2>
       <ol id="lobby-players"></ol>
       <h2>Match length</h2>
