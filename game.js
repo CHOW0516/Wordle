@@ -11,15 +11,21 @@ const HINT_COST_POINTS = 1;
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
 // Solving in 1-3 guesses earns a strong sabotage, 4+ earns a weak one.
-const STRONG_SABOTAGES = ['lostRow', 'keyLock'];
-const WEAK_SABOTAGES = ['fog', 'scramble', 'freeze'];
+const STRONG_SABOTAGES = ['lostRow', 'keyLock', 'steal', 'wordSwap'];
+const WEAK_SABOTAGES = ['fog', 'scramble', 'freeze', 'amnesia', 'invisibleInk', 'hintThief'];
 
+// 0 means the sabotage happens once and has no timer.
 const SABOTAGE_DURATION_MS = {
   fog: 10000,
   keyLock: 15000,
   scramble: 15000,
   freeze: 5000,
+  amnesia: 10000,
+  invisibleInk: 15000,
   lostRow: 0,
+  steal: 0,
+  wordSwap: 0,
+  hintThief: 0,
 };
 
 const SABOTAGE_NAMES = {
@@ -27,8 +33,16 @@ const SABOTAGE_NAMES = {
   keyLock: 'Key lock',
   scramble: 'Scramble',
   freeze: 'Freeze',
+  amnesia: 'Amnesia',
+  invisibleInk: 'Invisible ink',
   lostRow: 'Lost row',
+  steal: 'Steal',
+  wordSwap: 'Word swap',
+  hintThief: 'Hint thief',
 };
+
+const STEAL_POINTS = 2;
+const HINT_THIEF_FALLBACK_POINTS = 1;
 
 // Returns one of 'correct' | 'present' | 'absent' for each letter.
 // Handles repeated letters: a letter is only marked as many times as it appears in the secret.
@@ -120,15 +134,23 @@ class Room {
       maxGuesses: MAX_GUESSES,
       hintsLeft: HINTS_PER_MATCH,
       hintPositions: [],
+      connected: true,
       pendingSabotages: [],
-      frozenUntil: 0,
-      lockedLetters: [],
-      lockedUntil: 0,
+      effects: {}, // timed sabotage name -> { until, letters? }
     });
     if (!this.hostId) this.hostId = playerId;
     this.broadcastEvent(`${name} joined.`);
     this.broadcastState();
     return null;
+  }
+
+  // A dropped player keeps their seat; the server removes them later if they do not come back.
+  setConnected(playerId, connected) {
+    const player = this.players.get(playerId);
+    if (!player || player.connected === connected) return;
+    player.connected = connected;
+    this.broadcastEvent(connected ? `${player.name} reconnected.` : `${player.name} lost connection.`);
+    this.broadcastState();
   }
 
   removePlayer(playerId) {
@@ -162,9 +184,7 @@ class Room {
       player.hintsLeft = HINTS_PER_MATCH;
       player.usedWords = new Set();
       player.pendingSabotages = [];
-      player.frozenUntil = 0;
-      player.lockedLetters = [];
-      player.lockedUntil = 0;
+      player.effects = {};
       this.giveNewWord(player);
     }
     this.state = 'playing';
@@ -201,6 +221,11 @@ class Room {
     this.broadcastState();
   }
 
+  hasEffect(player, sabotage) {
+    const effect = player.effects[sabotage];
+    return Boolean(effect) && this.now() < effect.until;
+  }
+
   giveNewWord(player) {
     let choices = this.answerWords.filter((word) => !player.usedWords.has(word));
     if (choices.length === 0) {
@@ -221,9 +246,9 @@ class Room {
 
     const word = String(rawWord || '').toLowerCase();
     if (!/^[a-z]{5}$/.test(word)) return 'Guesses must be 5 letters.';
-    if (this.now() < player.frozenUntil) return 'You are frozen!';
-    if (this.now() < player.lockedUntil) {
-      const lockedLetter = [...word].find((letter) => player.lockedLetters.includes(letter));
+    if (this.hasEffect(player, 'freeze')) return 'You are frozen!';
+    if (this.hasEffect(player, 'keyLock')) {
+      const lockedLetter = [...word].find((letter) => player.effects.keyLock.letters.includes(letter));
       if (lockedLetter) return `The letter ${lockedLetter.toUpperCase()} is locked.`;
     }
     if (!this.allowedWords.has(word)) return 'Not in the word list.';
@@ -256,7 +281,7 @@ class Room {
     if (!player) return 'You are not in this room.';
     if (this.state !== 'playing') return 'The match is not running.';
     if (player.hintsLeft === 0) return 'You have no hints left.';
-    if (this.now() < player.frozenUntil) return 'You are frozen!';
+    if (this.hasEffect(player, 'freeze')) return 'You are frozen!';
 
     // Skip spots the player already has green, or already got as a hint.
     const unknownPositions = [0, 1, 2, 3, 4].filter(
@@ -284,25 +309,56 @@ class Room {
 
     const sabotage = attacker.pendingSabotages.shift();
     const durationMs = SABOTAGE_DURATION_MS[sabotage];
-    const effect = { type: 'effect', sabotage, durationMs, from: attacker.name };
 
-    if (sabotage === 'freeze') {
-      target.frozenUntil = this.now() + durationMs;
-    } else if (sabotage === 'keyLock') {
-      target.lockedLetters = shuffle(ALPHABET, this.random).slice(0, 3);
-      target.lockedUntil = this.now() + durationMs;
-      effect.letters = target.lockedLetters;
-    } else if (sabotage === 'scramble') {
-      effect.letters = shuffle(ALPHABET, this.random);
+    if (durationMs > 0) {
+      const effect = { until: this.now() + durationMs };
+      if (sabotage === 'keyLock') effect.letters = shuffle(ALPHABET, this.random).slice(0, 3);
+      if (sabotage === 'scramble') effect.letters = shuffle(ALPHABET, this.random);
+      target.effects[sabotage] = effect;
+      // Send fresh state when it wears off (Fog and Amnesia hide data until then).
+      this.setTimer(() => {
+        if (this.state === 'playing') this.broadcastState();
+      }, durationMs + 50);
     } else if (sabotage === 'lostRow') {
       // Never take away the row the target is about to use, so this cannot end their word instantly.
       target.maxGuesses = Math.max(target.maxGuesses - 1, target.guesses.length + 1);
+    } else if (sabotage === 'steal') {
+      target.score -= STEAL_POINTS;
+      attacker.score += STEAL_POINTS;
+    } else if (sabotage === 'wordSwap') {
+      this.giveNewWord(target);
+    } else if (sabotage === 'hintThief') {
+      if (target.hintsLeft > 0) {
+        target.hintsLeft--;
+        attacker.hintsLeft++;
+      } else {
+        target.score -= HINT_THIEF_FALLBACK_POINTS;
+      }
     }
 
-    this.send(target.id, effect);
+    // Everyone hears about the attack, so every screen can show who got hit.
+    for (const player of this.players.values()) {
+      this.send(player.id, { type: 'attack', sabotage, fromName: attacker.name, targetId: target.id });
+    }
     this.broadcastEvent(`${attacker.name} hit ${target.name} with ${SABOTAGE_NAMES[sabotage]}!`);
     this.broadcastState();
     return null;
+  }
+
+  // What this player may see of their own guesses. Fog hides colors, Amnesia hides letters.
+  visibleGuesses(player) {
+    const fogged = this.hasEffect(player, 'fog');
+    const forgotten = this.hasEffect(player, 'amnesia');
+    return player.guesses.map((guess) => ({
+      word: forgotten ? null : guess.word,
+      result: fogged ? null : guess.result,
+    }));
+  }
+
+  activeEffects(player) {
+    return Object.keys(player.effects)
+      .filter((sabotage) => this.hasEffect(player, sabotage))
+      .map((sabotage) => ({ sabotage, ...player.effects[sabotage] }));
   }
 
   broadcastEvent(text) {
@@ -318,8 +374,11 @@ class Room {
       name: player.name,
       score: player.score,
       solvedCount: player.solvedCount,
-      guessCount: player.guesses.length,
       maxGuesses: player.maxGuesses,
+      connected: player.connected,
+      // Colors only, never letters, so opponents can watch progress without learning the word.
+      board: this.state === 'playing' ? player.guesses.map((guess) => guess.result) : [],
+      effects: this.activeEffects(player).map(({ sabotage, until }) => ({ sabotage, until })),
     }));
 
     for (const player of this.players.values()) {
@@ -335,7 +394,8 @@ class Room {
         players: scoreboard,
         you: {
           id: player.id,
-          guesses: this.state === 'playing' ? player.guesses : [],
+          guesses: this.state === 'playing' ? this.visibleGuesses(player) : [],
+          effects: this.activeEffects(player),
           maxGuesses: player.maxGuesses,
           hintsLeft: player.hintsLeft,
           hints: this.state === 'playing'
@@ -357,4 +417,5 @@ module.exports = {
   MAX_GUESSES,
   HINTS_PER_MATCH,
   SABOTAGE_DURATION_MS,
+  SABOTAGE_NAMES,
 };

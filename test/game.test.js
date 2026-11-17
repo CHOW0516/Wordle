@@ -19,8 +19,10 @@ test('pointsForSolve gives more points for fewer guesses', () => {
 });
 
 test('pickSabotage gives strong sabotages for fast solves', () => {
-  assert.ok(['lostRow', 'keyLock'].includes(pickSabotage(3, () => 0.99)));
-  assert.ok(['fog', 'scramble', 'freeze'].includes(pickSabotage(4, () => 0)));
+  assert.strictEqual(pickSabotage(3, () => 0), 'lostRow');
+  assert.strictEqual(pickSabotage(3, () => 0.99), 'wordSwap');
+  assert.strictEqual(pickSabotage(4, () => 0), 'fog');
+  assert.strictEqual(pickSabotage(4, () => 0.99), 'hintThief');
 });
 
 // A room with fake time, fake timers and a fixed word, so tests are predictable.
@@ -123,9 +125,9 @@ test('key lock blocks guesses with locked letters', () => {
   const { room, clock } = startTwoPlayerRoom();
   room.players.get('ann').pendingSabotages.push('keyLock');
   room.sabotage('ann', 'bob');
-  const bob = room.players.get('bob');
-  assert.strictEqual(bob.lockedLetters.length, 3);
-  const wordWithLockedLetter = bob.lockedLetters[0].repeat(5);
+  const lockedLetters = room.players.get('bob').effects.keyLock.letters;
+  assert.strictEqual(lockedLetters.length, 3);
+  const wordWithLockedLetter = lockedLetters[0].repeat(5);
   room.allowedWords.add(wordWithLockedLetter);
   assert.match(room.guess('bob', wordWithLockedLetter), /is locked/);
   clock.time += 15000;
@@ -222,4 +224,98 @@ test('hints are blocked while frozen and when every letter is known', () => {
   const ann = room.players.get('ann');
   ann.guesses.push({ word: 'solve', result: Array(5).fill('correct') });
   assert.strictEqual(room.hint('ann'), 'You already know every letter.');
+});
+
+test('a dropped player keeps their seat and score, and is shown as offline', () => {
+  const { room, sent } = startTwoPlayerRoom();
+  room.guess('bob', 'solve');
+  room.setConnected('bob', false);
+  assert.strictEqual(room.state, 'playing');
+  const lastState = sent.filter((entry) => entry.playerId === 'ann' && entry.message.type === 'state').pop();
+  assert.strictEqual(lastState.message.players.find((player) => player.id === 'bob').connected, false);
+  room.setConnected('bob', true);
+  assert.strictEqual(room.players.get('bob').score, 6);
+});
+
+// Gives Ann one sabotage and sends it to Bob.
+function hitBob(room, sabotage) {
+  room.players.get('ann').pendingSabotages.push(sabotage);
+  assert.strictEqual(room.sabotage('ann', 'bob'), null);
+}
+
+function lastStateFor(sent, playerId) {
+  return sent.filter((entry) => entry.playerId === playerId && entry.message.type === 'state').pop().message;
+}
+
+test('steal moves 2 points from the target to the attacker', () => {
+  const { room } = startTwoPlayerRoom();
+  hitBob(room, 'steal');
+  assert.strictEqual(room.players.get('ann').score, 2);
+  assert.strictEqual(room.players.get('bob').score, -2);
+});
+
+test('word swap gives the target a new word and clears their guesses', () => {
+  const { room } = startTwoPlayerRoom({ answerWords: ['solve', 'crane'] });
+  const bob = room.players.get('bob');
+  room.guess('bob', 'smile');
+  const oldWord = bob.secretWord;
+  hitBob(room, 'wordSwap');
+  assert.notStrictEqual(bob.secretWord, oldWord);
+  assert.strictEqual(bob.guesses.length, 0);
+});
+
+test('hint thief takes a hint, or a point when the target has no hints', () => {
+  const { room } = startTwoPlayerRoom();
+  const ann = room.players.get('ann');
+  const bob = room.players.get('bob');
+  hitBob(room, 'hintThief');
+  assert.strictEqual(bob.hintsLeft, HINTS_PER_MATCH - 1);
+  assert.strictEqual(ann.hintsLeft, HINTS_PER_MATCH + 1);
+  bob.hintsLeft = 0;
+  hitBob(room, 'hintThief');
+  assert.strictEqual(bob.score, -1);
+  assert.strictEqual(ann.hintsLeft, HINTS_PER_MATCH + 1);
+});
+
+test('fog hides colors and amnesia hides letters from the target until they wear off', () => {
+  const { room, sent, clock } = startTwoPlayerRoom();
+  room.guess('bob', 'smile');
+  hitBob(room, 'fog');
+  assert.deepStrictEqual(lastStateFor(sent, 'bob').you.guesses, [{ word: 'smile', result: null }]);
+  hitBob(room, 'amnesia');
+  assert.deepStrictEqual(lastStateFor(sent, 'bob').you.guesses, [{ word: null, result: null }]);
+  clock.time += 10000;
+  room.broadcastState();
+  assert.strictEqual(lastStateFor(sent, 'bob').you.guesses[0].word, 'smile');
+  assert.strictEqual(lastStateFor(sent, 'bob').you.guesses[0].result[0], 'correct');
+});
+
+test('a timed sabotage schedules a state update for when it ends', () => {
+  const { room, sent, clock, timers } = startTwoPlayerRoom();
+  hitBob(room, 'fog');
+  assert.strictEqual(timers.length, 2); // match timer + fog timer
+  clock.time += 10050;
+  const messagesBefore = sent.length;
+  timers[1]();
+  assert.ok(sent.length > messagesBefore);
+  assert.deepStrictEqual(lastStateFor(sent, 'bob').you.effects, []);
+});
+
+test('everyone sees opponents\' board colors and active sabotages, but never their letters', () => {
+  const { room, sent } = startTwoPlayerRoom();
+  room.guess('bob', 'smile');
+  hitBob(room, 'freeze');
+  const bobAsSeenByAnn = lastStateFor(sent, 'ann').players.find((player) => player.id === 'bob');
+  assert.deepStrictEqual(bobAsSeenByAnn.board, [['correct', 'absent', 'absent', 'present', 'correct']]);
+  assert.strictEqual(bobAsSeenByAnn.effects[0].sabotage, 'freeze');
+  assert.ok(!JSON.stringify(lastStateFor(sent, 'ann').players).includes('smile'));
+});
+
+test('scramble and invisible ink are sent to the target as active effects', () => {
+  const { room, sent } = startTwoPlayerRoom();
+  hitBob(room, 'scramble');
+  hitBob(room, 'invisibleInk');
+  const effects = lastStateFor(sent, 'bob').you.effects;
+  assert.strictEqual(effects.find((effect) => effect.sabotage === 'scramble').letters.length, 26);
+  assert.ok(effects.some((effect) => effect.sabotage === 'invisibleInk'));
 });

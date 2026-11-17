@@ -60,6 +60,7 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: default; }
 
+.invite-link { color: var(--text); word-break: break-all; }
 .or { text-align: center; color: var(--muted); margin: 16px 0 0; }
 .room-code { font-size: 1.6rem; letter-spacing: 4px; }
 .rules { margin-top: 20px; color: var(--muted); }
@@ -73,7 +74,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: grid;
   gap: 6px;
   margin: 12px auto;
-  width: min(100%, 300px);
+  width: min(100%, 270px);
 }
 .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .tile {
@@ -136,32 +137,76 @@ button:disabled { opacity: 0.5; cursor: default; }
 .key.absent { background: #2a2e33; color: var(--muted); }
 .key.locked { background: var(--danger); text-decoration: line-through; }
 
-/* Sabotage */
-.effect-banner {
-  margin: 10px 0;
-  padding: 10px;
+/* Battle layout: opponents on top on phones, at the side on wide screens */
+.my-score { color: var(--accent); font-weight: 700; }
+.opponents { display: flex; gap: 8px; margin: 10px 0; }
+.opponent {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 6px;
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-weight: 400;
+}
+.opponent:disabled { opacity: 1; cursor: default; }
+.opponent.targetable { border-color: var(--danger); animation: target-pulse 1s infinite; }
+.opponent.offline { opacity: 0.45; }
+.opponent.hit, .board.hit { animation: hit-shake 0.6s; }
+.opponent.hit { background: #5a2523; }
+.opponent-name { font-size: 0.85rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opponent-score { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+.mini-board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; width: min(100%, 64px); margin: 0 auto; }
+.mini-tile { aspect-ratio: 1; background: #2a2e33; border-radius: 2px; }
+.mini-tile.correct { background: var(--correct); }
+.mini-tile.present { background: var(--present); }
+.mini-tile.absent { background: #5d636b; }
+.mini-tile.lost { background: var(--danger); opacity: 0.5; }
+.opponent-effects { min-height: 18px; margin-top: 4px; font-size: 0.75rem; }
+
+.effect-chip {
+  display: inline-block;
+  margin: 2px;
+  padding: 2px 6px;
+  background: var(--danger);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.my-effects { text-align: center; }
+.attack-banner {
+  margin: 8px 0;
+  padding: 8px;
   text-align: center;
   font-weight: 700;
-  background: var(--danger);
+  border: 2px dashed var(--danger);
   border-radius: 6px;
 }
-.sabotage-panel {
-  margin: 12px 0;
-  padding: 10px;
-  border: 2px dashed var(--present);
-  border-radius: 6px;
-  text-align: center;
+
+@keyframes target-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(217, 83, 79, 0.45); }
 }
-.sabotage-panel p { margin: 0 0 6px; }
-.target-buttons { display: flex; gap: 6px; }
-.target-buttons button { margin: 0; background: var(--danger); }
+@keyframes hit-shake {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
 
 .frozen .board, .frozen .keyboard { filter: hue-rotate(180deg) brightness(1.3); opacity: 0.6; }
 
-/* Scores */
-.scoreboard, #lobby-players { padding-left: 20px; }
-.scoreboard li { display: flex; justify-content: space-between; padding: 4px 0; }
-.scoreboard .you { font-weight: 700; color: var(--accent); }
+@media (min-width: 820px) {
+  main:has(#game-screen:not([hidden])) { max-width: 820px; }
+  .battle { display: flex; gap: 24px; align-items: flex-start; }
+  .opponents { flex-direction: column; width: 170px; margin-top: 0; }
+  .mini-board { width: 110px; }
+  .board { width: min(100%, 300px); }
+  .my-side { flex: 1; min-width: 0; }
+}
+
+#lobby-players { padding-left: 20px; }
 
 /* Messages */
 .toast {

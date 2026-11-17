@@ -15,7 +15,7 @@
       <p class="tagline">Race your friends to solve 5-letter words. Every solve lets you sabotage someone.</p>
       <label>Your name <input id="name-input" maxlength="12" autocomplete="off"></label>
       <button id="create-button">Create a room</button>
-      <div class="or">or</div>
+      <div id="or-text" class="or">or</div>
       <label>Room code <input id="code-input" maxlength="4" autocomplete="off"></label>
       <button id="join-button">Join room</button>
     </section>
@@ -23,7 +23,8 @@
     <!-- Screen 2: waiting room and results -->
     <section id="lobby-screen" hidden>
       <p>Room code: <strong id="room-code" class="room-code"></strong></p>
-      <p class="hint">Share this code with 1 to 3 friends.</p>
+      <button id="invite-button">Copy invite link</button>
+      <p class="hint">Send this link to 1 to 3 friends: <span id="invite-link" class="invite-link"></span></p>
       <h2 id="lobby-title">Players</h2>
       <ol id="lobby-players"></ol>
       <h2>Match length</h2>
@@ -35,8 +36,10 @@
         <ul>
           <li>Everyone gets their own secret word and 6 guesses. Green means right letter, right spot. Yellow means the letter is in the word, but in another spot.</li>
           <li>Solve a word to score points (6 for 1 guess, down to 1 for 6 guesses). Then you get a new word right away.</li>
-          <li>Each solve earns a sabotage. Click a player to send it. Solving in 3 guesses or fewer earns a stronger one.</li>
-          <li>Fog hides colors, Key lock blocks 3 letters, Scramble shuffles the keyboard, Freeze stops typing, Lost row takes away a guess.</li>
+          <li>You can watch your opponents' boards. You see their colors, not their letters.</li>
+          <li>Each solve earns a sabotage. Tap an opponent's board to send it. Solving in 3 guesses or fewer earns a strong one.</li>
+          <li>Strong: Lost row (one guess less), Key lock (3 letters blocked), Steal (take 2 points), Word swap (they get a new word).</li>
+          <li>Weak: Fog (colors hidden), Scramble (keyboard shuffled), Freeze (no typing), Amnesia (old letters hidden), Invisible ink (typed letters hidden), Hint thief (take a hint).</li>
           <li>You have 3 hints per match. Each hint shows one letter in its right spot and costs 1 point.</li>
           <li>The host picks a match length of 3, 5 or 10 minutes. Most points wins.</li>
         </ul>
@@ -47,21 +50,22 @@
     <section id="game-screen" hidden>
       <div class="top-bar">
         <span>Room <strong id="game-room-code"></strong></span>
+        <span id="my-score" class="my-score"></span>
         <span id="timer" class="timer">5:00</span>
       </div>
-      <div id="effect-banner" class="effect-banner" hidden></div>
-      <div class="hint-bar">
-        <div id="hint-tiles" class="hint-tiles"></div>
-        <button id="hint-button" class="hint-button">Hint</button>
+      <div class="battle">
+        <div id="opponents" class="opponents"></div>
+        <div class="my-side">
+          <div id="attack-banner" class="attack-banner" hidden></div>
+          <div id="my-effects" class="my-effects"></div>
+          <div class="hint-bar">
+            <div id="hint-tiles" class="hint-tiles"></div>
+            <button id="hint-button" class="hint-button">Hint</button>
+          </div>
+          <div id="board" class="board"></div>
+          <div id="keyboard" class="keyboard"></div>
+        </div>
       </div>
-      <div id="board" class="board"></div>
-      <div id="sabotage-panel" class="sabotage-panel" hidden>
-        <p>Send <strong id="sabotage-name"></strong> to:</p>
-        <div id="target-buttons" class="target-buttons"></div>
-      </div>
-      <div id="keyboard" class="keyboard"></div>
-      <h2>Scores</h2>
-      <ul id="scoreboard" class="scoreboard"></ul>
     </section>
 
     <div id="toast" class="toast" hidden></div>
