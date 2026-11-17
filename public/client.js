@@ -3,28 +3,28 @@
 const MAX_GUESSES = 6;
 const WORD_LENGTH = 5;
 const KEYBOARD_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
-const SABOTAGE_NAMES = {
-  fog: 'Fog',
-  keyLock: 'Key lock',
-  scramble: 'Scramble',
-  freeze: 'Freeze',
-  lostRow: 'Lost row',
-};
-const SABOTAGE_MESSAGES = {
-  fog: 'Fog! Your colors are hidden.',
-  keyLock: 'Key lock! Some letters are blocked.',
-  scramble: 'Scramble! Your keyboard is shuffled.',
-  freeze: 'Freeze! You cannot type.',
-  lostRow: 'Lost row! You have one guess less.',
+const HIT_FLASH_MS = 700;
+
+// name: shown in messages. icon: shown on boards. text: shown to the player who is hit.
+const SABOTAGES = {
+  fog: { name: 'Fog', icon: '🌫️', text: 'Colors hidden' },
+  keyLock: { name: 'Key lock', icon: '🔒', text: 'Letters locked' },
+  scramble: { name: 'Scramble', icon: '🔀', text: 'Keyboard shuffled' },
+  freeze: { name: 'Freeze', icon: '❄️', text: 'Cannot type' },
+  amnesia: { name: 'Amnesia', icon: '💭', text: 'Old letters hidden' },
+  invisibleInk: { name: 'Invisible ink', icon: '👻', text: 'Typed letters hidden' },
+  lostRow: { name: 'Lost row', icon: '🧱', text: 'You lost one guess row.' },
+  steal: { name: 'Steal', icon: '💰', text: 'They took 2 of your points.' },
+  wordSwap: { name: 'Word swap', icon: '🔄', text: 'Your word was replaced.' },
+  hintThief: { name: 'Hint thief', icon: '🕵️', text: 'They took a hint from you.' },
 };
 
 const elements = {};
 for (const id of [
   'join-screen', 'lobby-screen', 'game-screen', 'name-input', 'code-input', 'create-button',
   'join-button', 'room-code', 'lobby-title', 'lobby-players', 'start-button', 'waiting-text',
-  'game-room-code', 'timer', 'effect-banner', 'board', 'sabotage-panel', 'sabotage-name',
-  'target-buttons', 'keyboard', 'scoreboard', 'toast', 'event-log', 'length-buttons', 'hint-tiles',
-  'hint-button',
+  'game-room-code', 'timer', 'my-score', 'opponents', 'attack-banner', 'my-effects', 'board',
+  'keyboard', 'toast', 'event-log', 'length-buttons', 'hint-tiles', 'hint-button',
 ]) {
   elements[id] = document.getElementById(id);
 }
@@ -33,19 +33,19 @@ let socket = null;
 let roomState = null; // last 'state' message from the server
 let serverTimeOffset = 0; // server clock minus browser clock
 let currentInput = '';
+const hitFlashUntil = {}; // player id -> browser time until which their board flashes
 
-// Active sabotages on this player. Each has an end time in browser time.
-const activeEffects = {
-  fogUntil: 0,
-  freezeUntil: 0,
-  lockedLetters: [],
-  lockedUntil: 0,
-  scrambledLetters: null,
-  scrambleUntil: 0,
-};
+function serverNow() {
+  return Date.now() + serverTimeOffset;
+}
 
-function isActive(untilTime) {
-  return Date.now() < untilTime;
+// The sabotage on this player right now, or undefined. The server decides what is active.
+function myEffect(sabotage) {
+  return roomState.you.effects.find((effect) => effect.sabotage === sabotage && serverNow() < effect.until);
+}
+
+function secondsLeft(until) {
+  return Math.max(0, Math.ceil((until - serverNow()) / 1000));
 }
 
 // ---------- Connection ----------
@@ -114,7 +114,7 @@ function handleMessage(message) {
     const previousState = roomState && roomState.state;
     roomState = message;
     serverTimeOffset = message.serverNow - Date.now();
-    if (message.state === 'playing' && previousState !== 'playing') resetForNewMatch();
+    if (message.state === 'playing' && previousState !== 'playing') currentInput = '';
     render();
   } else if (message.type === 'joined') {
     saveToken(message.token);
@@ -129,44 +129,31 @@ function handleMessage(message) {
   } else if (message.type === 'reveal') {
     currentInput = '';
     if (message.solved) {
-      showToast(`Solved! +${message.points} points. You earned ${SABOTAGE_NAMES[message.sabotage]}.`);
+      const sabotage = SABOTAGES[message.sabotage];
+      showToast(`Solved! +${message.points} points. You earned ${sabotage.icon} ${sabotage.name}.`);
     } else {
       showToast(`The word was ${message.word.toUpperCase()}.`, 3000);
     }
-  } else if (message.type === 'effect') {
-    applyEffect(message);
+  } else if (message.type === 'attack') {
+    showAttack(message);
   }
 }
 
-function resetForNewMatch() {
-  currentInput = '';
-  activeEffects.fogUntil = 0;
-  activeEffects.freezeUntil = 0;
-  activeEffects.lockedUntil = 0;
-  activeEffects.scrambleUntil = 0;
-}
-
-function applyEffect(effect) {
-  const until = Date.now() + effect.durationMs;
-  if (effect.sabotage === 'fog') activeEffects.fogUntil = until;
-  if (effect.sabotage === 'freeze') activeEffects.freezeUntil = until;
-  if (effect.sabotage === 'keyLock') {
-    activeEffects.lockedLetters = effect.letters;
-    activeEffects.lockedUntil = until;
+// Flash the board of whoever got hit. If it is this player, also say what happened.
+function showAttack(attack) {
+  hitFlashUntil[attack.targetId] = Date.now() + HIT_FLASH_MS;
+  if (roomState && attack.targetId === roomState.you.id) {
+    const sabotage = SABOTAGES[attack.sabotage];
+    if (attack.sabotage === 'wordSwap') currentInput = '';
+    showToast(`${sabotage.icon} ${attack.fromName} hit you with ${sabotage.name}! ${sabotage.text}`, 3000);
   }
-  if (effect.sabotage === 'scramble') {
-    activeEffects.scrambledLetters = effect.letters;
-    activeEffects.scrambleUntil = until;
-  }
-  showToast(`${effect.from} hit you with ${SABOTAGE_NAMES[effect.sabotage]}!`);
-  render();
 }
 
 // ---------- Input ----------
 
-function pressKey(key) {
+function pressKey(key, fromRealKeyboard = false) {
   if (!roomState || roomState.state !== 'playing') return;
-  if (isActive(activeEffects.freezeUntil)) return;
+  if (myEffect('freeze')) return;
 
   if (key === 'enter') {
     if (currentInput.length < WORD_LENGTH) return showToast('Not enough letters.');
@@ -175,9 +162,10 @@ function pressKey(key) {
   } else if (key === 'backspace') {
     currentInput = currentInput.slice(0, -1);
   } else if (/^[a-z]$/.test(key) && currentInput.length < WORD_LENGTH) {
-    if (isActive(activeEffects.lockedUntil) && activeEffects.lockedLetters.includes(key)) {
-      return showToast(`${key.toUpperCase()} is locked!`);
-    }
+    // Scramble would do nothing to a real keyboard, so letters must be tapped on screen.
+    if (fromRealKeyboard && myEffect('scramble')) return showToast('Scrambled! Use the on-screen keys.');
+    const keyLock = myEffect('keyLock');
+    if (keyLock && keyLock.letters.includes(key)) return showToast(`${key.toUpperCase()} is locked!`);
     currentInput += key;
   }
   renderBoard();
@@ -188,7 +176,7 @@ document.addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase();
   if (key === 'enter' || key === 'backspace' || /^[a-z]$/.test(key)) {
     event.preventDefault();
-    pressKey(key);
+    pressKey(key, true);
   }
 });
 
@@ -253,25 +241,95 @@ function renderLobby() {
 }
 
 function renderGame() {
+  const me = roomState.players.find((player) => player.id === roomState.you.id);
   elements['game-room-code'].textContent = roomState.code;
-  document.body.classList.toggle('frozen', isActive(activeEffects.freezeUntil));
-  renderEffectBanner();
+  elements['my-score'].textContent = `You: ${me.score} pts`;
+  document.body.classList.toggle('frozen', Boolean(myEffect('freeze')));
+  renderOpponents();
+  renderAttackBanner();
+  renderMyEffects();
   renderHints();
   renderBoard();
   renderKeyboard();
-  renderSabotagePanel();
-  renderScoreboard();
   renderTimer();
 }
 
-function renderEffectBanner() {
-  const messages = [];
-  if (isActive(activeEffects.freezeUntil)) messages.push(SABOTAGE_MESSAGES.freeze);
-  if (isActive(activeEffects.fogUntil)) messages.push(SABOTAGE_MESSAGES.fog);
-  if (isActive(activeEffects.lockedUntil)) messages.push(SABOTAGE_MESSAGES.keyLock);
-  if (isActive(activeEffects.scrambleUntil)) messages.push(SABOTAGE_MESSAGES.scramble);
-  elements['effect-banner'].hidden = messages.length === 0;
-  elements['effect-banner'].textContent = messages.join(' ');
+function makeEffectChip(effect) {
+  const chip = document.createElement('span');
+  chip.className = 'effect-chip';
+  chip.append(SABOTAGES[effect.sabotage].icon, ' ');
+  const countdown = document.createElement('span');
+  countdown.dataset.until = effect.until; // the clock tick keeps this number fresh
+  countdown.textContent = secondsLeft(effect.until);
+  chip.append(countdown);
+  return chip;
+}
+
+// One small live board per opponent. Tap it to send your sabotage.
+function renderOpponents() {
+  const canAttack = roomState.you.pendingSabotages.length > 0;
+  const topScore = Math.max(...roomState.players.map((player) => player.score));
+  const opponents = roomState.players.filter((player) => player.id !== roomState.you.id);
+
+  elements.opponents.replaceChildren(
+    ...opponents.map((opponent) => {
+      const card = document.createElement('button');
+      card.className = 'opponent';
+      card.disabled = !canAttack;
+      if (canAttack) card.classList.add('targetable');
+      if (!opponent.connected) card.classList.add('offline');
+      if (Date.now() < (hitFlashUntil[opponent.id] || 0)) card.classList.add('hit');
+      card.addEventListener('click', () => sendMessage({ type: 'sabotage', targetId: opponent.id }));
+
+      const name = document.createElement('div');
+      name.className = 'opponent-name';
+      name.textContent = (opponent.score === topScore && topScore > 0 ? '👑 ' : '') + opponent.name;
+
+      const score = document.createElement('div');
+      score.className = 'opponent-score';
+      score.textContent = opponent.connected ? `${opponent.score} pts` : 'offline';
+
+      const miniBoard = document.createElement('div');
+      miniBoard.className = 'mini-board';
+      for (let rowIndex = 0; rowIndex < MAX_GUESSES; rowIndex++) {
+        for (let letterIndex = 0; letterIndex < WORD_LENGTH; letterIndex++) {
+          const tile = document.createElement('div');
+          tile.className = 'mini-tile';
+          if (opponent.board[rowIndex]) tile.classList.add(opponent.board[rowIndex][letterIndex]);
+          else if (rowIndex >= opponent.maxGuesses) tile.classList.add('lost');
+          miniBoard.appendChild(tile);
+        }
+      }
+
+      const effects = document.createElement('div');
+      effects.className = 'opponent-effects';
+      effects.replaceChildren(...opponent.effects.map(makeEffectChip));
+
+      card.append(name, score, miniBoard, effects);
+      return card;
+    })
+  );
+}
+
+function renderAttackBanner() {
+  const pending = roomState.you.pendingSabotages;
+  elements['attack-banner'].hidden = pending.length === 0;
+  if (pending.length === 0) return;
+  const sabotage = SABOTAGES[pending[0]];
+  let text = `${sabotage.icon} ${sabotage.name} ready`;
+  if (pending.length > 1) text += ` (+${pending.length - 1} more)`;
+  elements['attack-banner'].textContent = `${text}. Tap an opponent's board to attack!`;
+}
+
+function renderMyEffects() {
+  const active = roomState.you.effects.filter((effect) => serverNow() < effect.until);
+  elements['my-effects'].replaceChildren(
+    ...active.map((effect) => {
+      const chip = makeEffectChip(effect);
+      chip.append(`s ${SABOTAGES[effect.sabotage].text}`);
+      return chip;
+    })
+  );
 }
 
 function renderHints() {
@@ -295,7 +353,7 @@ function renderHints() {
 function renderBoard() {
   if (!roomState || roomState.state !== 'playing') return;
   const { guesses, maxGuesses } = roomState.you;
-  const fogged = isActive(activeEffects.fogUntil);
+  const inkHidden = Boolean(myEffect('invisibleInk'));
   const rows = [];
 
   for (let rowIndex = 0; rowIndex < MAX_GUESSES; rowIndex++) {
@@ -304,17 +362,23 @@ function renderBoard() {
     if (rowIndex >= maxGuesses) row.classList.add('lost');
 
     const guess = guesses[rowIndex];
-    const letters = guess ? guess.word : rowIndex === guesses.length ? currentInput : '';
+    const isInputRow = rowIndex === guesses.length;
     for (let letterIndex = 0; letterIndex < WORD_LENGTH; letterIndex++) {
       const tile = document.createElement('div');
       tile.className = 'tile';
-      tile.textContent = letters[letterIndex] || '';
-      if (guess) tile.classList.add(fogged ? 'fogged' : guess.result[letterIndex]);
-      else if (letters[letterIndex]) tile.classList.add('filled');
+      if (guess) {
+        // The server sends no word during Amnesia and no result during Fog.
+        tile.textContent = guess.word ? guess.word[letterIndex] : '?';
+        tile.classList.add(guess.result ? guess.result[letterIndex] : 'fogged');
+      } else if (isInputRow && currentInput[letterIndex]) {
+        tile.textContent = inkHidden ? '•' : currentInput[letterIndex];
+        tile.classList.add('filled');
+      }
       row.appendChild(tile);
     }
     rows.push(row);
   }
+  elements.board.classList.toggle('hit', Date.now() < (hitFlashUntil[roomState.you.id] || 0));
   elements.board.replaceChildren(...rows);
 }
 
@@ -323,6 +387,7 @@ function letterStatuses() {
   const priority = { absent: 1, present: 2, correct: 3 };
   const statuses = {};
   for (const guess of roomState.you.guesses) {
+    if (!guess.word || !guess.result) continue; // hidden by Amnesia or Fog
     [...guess.word].forEach((letter, index) => {
       const status = guess.result[index];
       if (!statuses[letter] || priority[status] > priority[statuses[letter]]) statuses[letter] = status;
@@ -332,13 +397,15 @@ function letterStatuses() {
 }
 
 function renderKeyboard() {
-  const statuses = isActive(activeEffects.fogUntil) ? {} : letterStatuses();
+  const statuses = letterStatuses();
+  const scramble = myEffect('scramble');
   let rows = KEYBOARD_ROWS;
-  if (isActive(activeEffects.scrambleUntil)) {
-    const letters = activeEffects.scrambledLetters.join('');
+  if (scramble) {
+    const letters = scramble.letters.join('');
     rows = [letters.slice(0, 10), letters.slice(10, 19), letters.slice(19)];
   }
-  const lockedLetters = isActive(activeEffects.lockedUntil) ? activeEffects.lockedLetters : [];
+  const keyLock = myEffect('keyLock');
+  const lockedLetters = keyLock ? keyLock.letters : [];
 
   const rowElements = rows.map((rowLetters, rowIndex) => {
     const row = document.createElement('div');
@@ -365,58 +432,24 @@ function makeKey(key, label) {
   return button;
 }
 
-function renderSabotagePanel() {
-  const pending = roomState.you.pendingSabotages;
-  const targets = roomState.players.filter((player) => player.id !== roomState.you.id);
-  elements['sabotage-panel'].hidden = pending.length === 0;
-  if (pending.length === 0) return;
-
-  let label = SABOTAGE_NAMES[pending[0]];
-  if (pending.length > 1) label += ` (+${pending.length - 1} more saved)`;
-  elements['sabotage-name'].textContent = label;
-  elements['target-buttons'].replaceChildren(
-    ...targets.map((target) => {
-      const button = document.createElement('button');
-      button.textContent = target.name;
-      button.addEventListener('click', () => sendMessage({ type: 'sabotage', targetId: target.id }));
-      return button;
-    })
-  );
-}
-
-function renderScoreboard() {
-  const players = [...roomState.players].sort((first, second) => second.score - first.score);
-  elements.scoreboard.replaceChildren(
-    ...players.map((player) => {
-      const item = document.createElement('li');
-      if (player.id === roomState.you.id) item.classList.add('you');
-      const name = document.createElement('span');
-      name.textContent = player.connected ? player.name : `${player.name} (offline)`;
-      const details = document.createElement('span');
-      details.textContent = `${player.score} pts · guess ${player.guessCount}/${player.maxGuesses}`;
-      item.append(name, details);
-      return item;
-    })
-  );
-}
-
 function renderTimer() {
   if (!roomState || !roomState.endsAt) return;
-  const remainingMs = Math.max(0, roomState.endsAt - (Date.now() + serverTimeOffset));
+  const remainingMs = Math.max(0, roomState.endsAt - serverNow());
   const totalSeconds = Math.ceil(remainingMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   elements.timer.textContent = `${minutes}:${seconds}`;
 }
 
-// Update the clock, and redraw when a sabotage wears off.
+// Keep the clock and the sabotage countdowns moving, and redraw when one of my sabotages ends.
 let lastEffectSignature = '';
 setInterval(() => {
   if (!roomState || roomState.state !== 'playing') return;
   renderTimer();
-  const signature = [
-    activeEffects.fogUntil, activeEffects.freezeUntil, activeEffects.lockedUntil, activeEffects.scrambleUntil,
-  ].map(isActive).join();
+  for (const countdown of document.querySelectorAll('[data-until]')) {
+    countdown.textContent = secondsLeft(Number(countdown.dataset.until));
+  }
+  const signature = roomState.you.effects.map((effect) => serverNow() < effect.until).join();
   if (signature !== lastEffectSignature) {
     lastEffectSignature = signature;
     renderGame();
