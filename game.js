@@ -120,6 +120,7 @@ class Room {
       maxGuesses: MAX_GUESSES,
       hintsLeft: HINTS_PER_MATCH,
       hintPositions: [],
+      connected: true,
       pendingSabotages: [],
       frozenUntil: 0,
       lockedLetters: [],
@@ -129,6 +130,15 @@ class Room {
     this.broadcastEvent(`${name} joined.`);
     this.broadcastState();
     return null;
+  }
+
+  // A dropped player keeps their seat; the server removes them later if they do not come back.
+  setConnected(playerId, connected) {
+    const player = this.players.get(playerId);
+    if (!player || player.connected === connected) return;
+    player.connected = connected;
+    this.broadcastEvent(connected ? `${player.name} reconnected.` : `${player.name} lost connection.`);
+    this.broadcastState();
   }
 
   removePlayer(playerId) {
@@ -320,6 +330,7 @@ class Room {
       solvedCount: player.solvedCount,
       guessCount: player.guesses.length,
       maxGuesses: player.maxGuesses,
+      connected: player.connected,
     }));
 
     for (const player of this.players.values()) {

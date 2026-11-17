@@ -50,16 +50,51 @@ function isActive(untilTime) {
 
 // ---------- Connection ----------
 
+const SESSION_KEY = 'wordRushSession';
+const RECONNECT_RETRY_MS = 2000;
+const RECONNECT_GIVE_UP_MS = 60000;
+let reconnectStartedAt = null; // when the connection dropped, or null if connected
+
+// The token lets this tab take its seat back after a drop or a page reload.
+// sessionStorage is per tab, so two tabs in one browser can be two players.
+function savedToken() {
+  try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; }
+}
+function saveToken(token) {
+  try {
+    if (token) sessionStorage.setItem(SESSION_KEY, token);
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch { /* storage blocked: reconnect after reload will not work, the game still does */ }
+}
+
 function connect(onOpen) {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${protocol}://${location.host}`);
   socket.addEventListener('open', onOpen);
   socket.addEventListener('message', (event) => handleMessage(JSON.parse(event.data)));
   socket.addEventListener('close', () => {
-    showToast('Disconnected. Refresh the page to play again.', 60000);
-    roomState = null;
     socket = null;
+    if (!savedToken()) return showToast('Could not reach the server. Please try again.', 4000);
+    if (reconnectStartedAt === null) reconnectStartedAt = Date.now();
+    if (Date.now() - reconnectStartedAt > RECONNECT_GIVE_UP_MS) return leaveToJoinScreen('Connection lost.');
+    showToast('Connection lost. Reconnecting...', RECONNECT_RETRY_MS + 1000);
+    setTimeout(tryRejoin, RECONNECT_RETRY_MS);
   });
+}
+
+function tryRejoin() {
+  const token = savedToken();
+  if (token && !socket) connect(() => sendMessage({ type: 'rejoin', token }));
+}
+
+function leaveToJoinScreen(text) {
+  saveToken(null);
+  reconnectStartedAt = null;
+  roomState = null;
+  elements['join-screen'].hidden = false;
+  elements['lobby-screen'].hidden = true;
+  elements['game-screen'].hidden = true;
+  showToast(text, 4000);
 }
 
 function sendMessage(message) {
@@ -81,6 +116,12 @@ function handleMessage(message) {
     serverTimeOffset = message.serverNow - Date.now();
     if (message.state === 'playing' && previousState !== 'playing') resetForNewMatch();
     render();
+  } else if (message.type === 'joined') {
+    saveToken(message.token);
+    if (reconnectStartedAt !== null) showToast('Reconnected!');
+    reconnectStartedAt = null;
+  } else if (message.type === 'rejoinFailed') {
+    leaveToJoinScreen('Your seat in that room is gone.');
   } else if (message.type === 'error') {
     showToast(message.message);
   } else if (message.type === 'event') {
@@ -350,7 +391,7 @@ function renderScoreboard() {
       const item = document.createElement('li');
       if (player.id === roomState.you.id) item.classList.add('you');
       const name = document.createElement('span');
-      name.textContent = player.name;
+      name.textContent = player.connected ? player.name : `${player.name} (offline)`;
       const details = document.createElement('span');
       details.textContent = `${player.score} pts · guess ${player.guessCount}/${player.maxGuesses}`;
       item.append(name, details);
@@ -398,3 +439,6 @@ function addEvent(text) {
   elements['event-log'].prepend(item);
   while (elements['event-log'].children.length > 8) elements['event-log'].lastChild.remove();
 }
+
+// After a page reload, take the old seat back if there is one.
+tryRejoin();

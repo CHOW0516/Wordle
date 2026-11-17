@@ -24,6 +24,8 @@ Set `PORT` to use another port. Run tests with `npm test`.
 - Each player has 3 hints per match. A hint shows one unknown letter of the current word in its right spot and costs 1 point.
 - The host picks a match length of 3, 5 (default) or 10 minutes. Most points wins. The host can press **Play again**.
 
+- If your connection drops or you reload the page during a match, you get your seat back automatically. The server holds it for 60 seconds.
+
 | Sabotage | Strength | Effect on the target |
 |---|---|---|
 | Lost row | Strong | One fewer guess on the current word (never removes the row they are about to use) |
@@ -39,4 +41,5 @@ Set `PORT` to use another port. Run tests with `npm test`.
 - `public/` – the browser client (plain HTML, CSS, JS).
 - `words/answers.txt` – secret words (hand‑picked common words).
 - `words/allowed.txt` – accepted guesses, the 5‑letter words from [dwyl/english-words](https://github.com/dwyl/english-words) (public domain) plus the answers.
-- `test/game.test.js` – tests for the rules (`node --test`).
+- `test/game.test.js` – tests for the rules.
+- `test/server.test.js` – starts the real server and tests reconnect and message limits.

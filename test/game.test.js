@@ -223,3 +223,14 @@ test('hints are blocked while frozen and when every letter is known', () => {
   ann.guesses.push({ word: 'solve', result: Array(5).fill('correct') });
   assert.strictEqual(room.hint('ann'), 'You already know every letter.');
 });
+
+test('a dropped player keeps their seat and score, and is shown as offline', () => {
+  const { room, sent } = startTwoPlayerRoom();
+  room.guess('bob', 'solve');
+  room.setConnected('bob', false);
+  assert.strictEqual(room.state, 'playing');
+  const lastState = sent.filter((entry) => entry.playerId === 'ann' && entry.message.type === 'state').pop();
+  assert.strictEqual(lastState.message.players.find((player) => player.id === 'bob').connected, false);
+  room.setConnected('bob', true);
+  assert.strictEqual(room.players.get('bob').score, 6);
+});
